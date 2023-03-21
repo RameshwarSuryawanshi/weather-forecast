@@ -1,10 +1,18 @@
 package com.demo.weatherforecast.controller;
 
 
+import com.demo.weatherforecast.jwt.JWTUtility;
+import com.demo.weatherforecast.model.JwtRequest;
+import com.demo.weatherforecast.model.JwtResponse;
+import com.demo.weatherforecast.service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.net.URI;
@@ -15,7 +23,39 @@ import java.net.http.HttpResponse;
 @RestController
 public class WeatherForecastController {
 
-    @GetMapping("/{city}/summary")
+    @Autowired
+    private JWTUtility jwtUtility;
+
+    @Autowired
+    private AuthenticationManager authenticationManager;
+
+    @Autowired
+    private UserService userService;
+
+    @PostMapping("/authenticate")
+    public JwtResponse authenticate(@RequestBody JwtRequest jwtRequest) throws Exception{
+
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            jwtRequest.getUsername(),
+                            jwtRequest.getPassword()
+                    )
+            );
+        } catch (BadCredentialsException e) {
+            throw new Exception("INVALID_CREDENTIALS", e);
+        }
+
+        final UserDetails userDetails
+                = userService.loadUserByUsername(jwtRequest.getUsername());
+
+        final String token =
+                jwtUtility.generateToken(userDetails);
+
+        return  new JwtResponse(token);
+    }
+
+    @GetMapping(value = "/{city}/summary", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> getWeatherForecastSummaryByCity(@PathVariable(value = "city") String city) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://forecast9.p.rapidapi.com/rapidapi/forecast/" + city + "/summary/"))
@@ -24,10 +64,11 @@ public class WeatherForecastController {
                 .method("GET", HttpRequest.BodyPublishers.noBody())
                 .build();
         HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+
         return ResponseEntity.ok(response.body());
     }
 
-    @GetMapping("/{city}/hourly")
+    @GetMapping(value = "/{city}/hourly", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> getHourlyWeatherForecastSummaryByCity(@PathVariable(value = "city") String city) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://forecast9.p.rapidapi.com/rapidapi/forecast/" + city + "/hourly/"))
@@ -39,4 +80,6 @@ public class WeatherForecastController {
         System.out.println(response.body());
         return ResponseEntity.ok(response.body());
     }
+
+
 }
